@@ -6,7 +6,7 @@ import pandas as pd
 st.title("Grupo 5")
 st.header("Calculadora de Tabla de Verdad")
 
-expr = st.text_input("Ingresa la expresión lógica:", "p && (q || !r) ^ p")
+expr = st.text_input("Ingresa la expresión lógica:", "")
 
 def get_vars(expr):
     return sorted(set(re.findall(r"[a-z]", expr)))
