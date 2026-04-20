@@ -1,155 +1,48 @@
-from flask import Flask, render_template_string, request
+import streamlit as st
 import itertools
 import re
+import pandas as pd
 
-app = Flask(__name__)
+st.title("Grupo 5")
+st.header("Calculadora de Tabla de Verdad")
 
-HTML = """
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Tabla de Verdad</title>
-<style>
-body {
-    font-family: Arial;
-    background: #0f172a;
-    color: white;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-}
-.container {
-    background: #1e293b;
-    padding: 20px;
-    border-radius: 15px;
-    width: 600px;
-}
-input {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-}
-button {
-    padding: 10px;
-    margin: 5px;
-}
-table {
-    width: 100%;
-    margin-top: 10px;
-    border-collapse: collapse;
-}
-th, td {
-    border: 1px solid white;
-    padding: 5px;
-    text-align: center;
-}
-.error {
-    color: red;
-}
-</style>
-</head>
-<body>
-
-<div class="container">
-<h3>Grupo 5</h3>
-<h2>Calculadora de Tabla de Verdad</h2>
-
-<form method="post">
-<input type="text" name="expr" placeholder="Ej: p && (q || !r) ^ p">
-<button type="submit">Generar</button>
-</form>
-
-{% if error %}
-<div class="error">{{error}}</div>
-{% endif %}
-
-{% if table %}
-<table>
-<tr>
-{% for h in headers %}
-<th>{{h}}</th>
-{% endfor %}
-</tr>
-
-{% for row in table %}
-<tr>
-{% for cell in row %}
-<td>{{cell}}</td>
-{% endfor %}
-</tr>
-{% endfor %}
-</table>
-
-<form method="post">
-<input type="hidden" name="expr" value="{{expr}}">
-<input type="hidden" name="download" value="1">
-<button type="submit">Descargar CSV</button>
-</form>
-
-{% endif %}
-</div>
-
-</body>
-</html>
-"""
+expr = st.text_input("Ingresa la expresión lógica:", "p && (q || !r) ^ p")
 
 def get_vars(expr):
     return sorted(set(re.findall(r"[a-z]", expr)))
 
-def generate_table(expr):
-    vars = get_vars(expr)
-    combos = list(itertools.product([0,1], repeat=len(vars)))
-    table = []
+def evaluate(expr, values):
+    e = expr
+    for v in values:
+        e = e.replace(v, str(bool(values[v])))
 
-    for combo in combos:
-        values = dict(zip(vars, combo))
-        e = expr
+    e = e.replace("&&", " and ")
+    e = e.replace("||", " or ")
+    e = e.replace("!", " not ")
+    e = e.replace("^", " != ")
 
-        for v in values:
-            e = e.replace(v, str(bool(values[v])))
+    return eval(e)
 
-        e = e.replace("&&", " and ")
-        e = e.replace("||", " or ")
-        e = e.replace("!", " not ")
-        e = e.replace("^", " != ")  # XOR
+if st.button("Generar Tabla"):
+    if not expr.strip():
+        st.error("⚠️ Ingresa una expresión lógica")
+    else:
+        try:
+            vars = get_vars(expr)
+            combos = list(itertools.product([0,1], repeat=len(vars)))
 
-        result = eval(e)
-        table.append(list(combo) + [int(result)])
+            data = []
+            for combo in combos:
+                values = dict(zip(vars, combo))
+                result = evaluate(expr, values)
+                data.append(list(combo) + [int(result)])
 
-    return vars, table
+            df = pd.DataFrame(data, columns=vars + [expr])
 
-@app.route("/", methods=["GET", "POST"])
-def home():
-    table = []
-    headers = []
-    error = None
-    expr = ""
+            st.dataframe(df)
 
-    if request.method == "POST":
-        expr = request.form.get("expr", "").strip()
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Descargar CSV", csv, "tabla.csv", "text/csv")
 
-        if not expr:
-            error = "⚠️ Ingresa una expresión lógica"
-        else:
-            try:
-                vars, table = generate_table(expr)
-                headers = vars + [expr]
-
-                if request.form.get("download"):
-                    csv = ",".join(headers) + "\\n"
-                    for row in table:
-                        csv += ",".join(map(str,row)) + "\\n"
-                    return csv, 200, {
-                        "Content-Type": "text/csv",
-                        "Content-Disposition": "attachment; filename=tabla.csv"
-                    }
-
-            except:
-                error = "❌ Error en la expresión lógica"
-
-    return render_template_string(HTML, table=table, headers=headers, error=error, expr=expr)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+        except:
+            st.error("❌ Error en la expresión lógica")
